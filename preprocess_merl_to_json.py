@@ -35,14 +35,14 @@ def get_split(subject):
     if subject in TRAIN_SUBJECTS:
         return 'train'
     elif subject in VAL_SUBJECTS:
-        return 'val'
+        return 'validation'
     elif subject in TEST_SUBJECTS:
         return 'test'
     else:
         return None
 
 def main():
-    data = {'train': [], 'val': [], 'test': []}
+    data = {'train': [], 'validation': [], 'test': []}
     label_files = [f for f in os.listdir(LABELS_DIR) if f.endswith('_label.mat')]
     for label_file in tqdm(label_files, desc='Processing label files'):
         subject, session = parse_subject_session(label_file)
