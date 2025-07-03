@@ -38,7 +38,7 @@ def convert_merl_to_csv(json_path, output_dir):
             # Extract filename from the path
             filename = os.path.basename(video_path)
             # Update to use the correct MERL dataset location
-            new_video_path = f"/mnt/data/datasets/MERL/Videos_MERL_Shopping_Dataset/{filename}"
+            new_video_path = f"MERL/Videos_MERL_Shopping_Dataset/{filename}"
             
             # For each annotation, create a row
             for annotation in item['annotations']:

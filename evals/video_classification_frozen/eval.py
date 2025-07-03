@@ -24,6 +24,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
+from tqdm import tqdm
 
 from evals.video_classification_frozen.models import init_module
 from evals.video_classification_frozen.utils import make_transforms
@@ -238,41 +239,126 @@ def main(args_eval, resume_preempt=False):
             torch.save(save_dict, latest_path)
 
     # TRAIN LOOP
+    best_val_acc = -float('inf')
+    best_val_head_idx = -1
     for epoch in range(start_epoch, num_epochs):
         logger.info("Epoch %d" % (epoch + 1))
         train_sampler.set_epoch(epoch)
         if val_only:
             train_acc = -1.0
         else:
-            train_acc = run_one_epoch(
-                device=device,
-                training=True,
-                encoder=encoder,
-                classifiers=classifiers,
-                scaler=scaler,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                wd_scheduler=wd_scheduler,
-                data_loader=train_loader,
-                use_bfloat16=use_bfloat16,
+            # Training loop with tqdm
+            train_loader_tqdm = tqdm(train_loader, desc=f"Train [Epoch {epoch+1}]")
+            for c in classifiers:
+                c.train(mode=True)
+            criterion = torch.nn.CrossEntropyLoss()
+            top1_meters = [AverageMeter() for _ in classifiers]
+            for itr, data in enumerate(train_loader_tqdm):
+                [s.step() for s in scheduler]
+                [wds.step() for wds in wd_scheduler]
+                with torch.cuda.amp.autocast(dtype=torch.float16, enabled=use_bfloat16):
+                    clips = [
+                        [dij.to(device, non_blocking=True) for dij in di]
+                        for di in data[0]
+                    ]
+                    clip_indices = [d.to(device, non_blocking=True) for d in data[2]]
+                    labels = data[1].to(device)
+                    batch_size = len(labels)
+                    with torch.no_grad():
+                        outputs = encoder(clips, clip_indices)
+                    outputs = [[c(o) for o in outputs] for c in classifiers]
+                losses = [[criterion(o, labels) for o in coutputs] for coutputs in outputs]
+                with torch.no_grad():
+                    outputs_softmax = [sum([F.softmax(o, dim=1) for o in coutputs]) / len(coutputs) for coutputs in outputs]
+                    top1_accs = [100.0 * coutputs.max(dim=1).indices.eq(labels).sum() / batch_size for coutputs in outputs_softmax]
+                    top1_accs = [float(AllReduce.apply(t1a)) for t1a in top1_accs]
+                    for t1m, t1a in zip(top1_meters, top1_accs):
+                        t1m.update(t1a)
+                if use_bfloat16:
+                    [[s.scale(lij).backward() for lij in li] for s, li in zip(scaler, losses)]
+                    [s.step(o) for s, o in zip(scaler, optimizer)]
+                    [s.update() for s in scaler]
+                else:
+                    [[lij.backward() for lij in li] for li in losses]
+                    [o.step() for o in optimizer]
+                [o.zero_grad() for o in optimizer]
+                # Real-time summary every 10 iterations
+                if itr % 10 == 0:
+                    _agg_top1 = np.array([t1m.avg for t1m in top1_meters])
+                    mem_usage = torch.cuda.max_memory_allocated() / 1024.0**2
+                    summary = f"max: {_agg_top1.max():.3f}% mean: {_agg_top1.mean():.3f}% min: {_agg_top1.min():.3f}% [mem: {mem_usage:.2e}]"
+                    train_loader_tqdm.set_description(f"Train [Epoch {epoch+1}] | {summary}")
+            train_acc = max([t1m.avg for t1m in top1_meters])
+            # Print summary at end of epoch
+            _agg_top1 = np.array([t1m.avg for t1m in top1_meters])
+            mem_usage = torch.cuda.max_memory_allocated() / 1024.0**2
+            tqdm.write(
+                "[Train Epoch %d] max: %.3f%% mean: %.3f%% min: %.3f%% [mem: %.2e]"
+                % (epoch + 1, _agg_top1.max(), _agg_top1.mean(), _agg_top1.min(), mem_usage)
             )
 
-        val_acc = run_one_epoch(
-            device=device,
-            training=False,
-            encoder=encoder,
-            classifiers=classifiers,
-            scaler=scaler,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            wd_scheduler=wd_scheduler,
-            data_loader=val_loader,
-            use_bfloat16=use_bfloat16,
+        # Validation loop with tqdm
+        classifiers_eval = classifiers
+        for c in classifiers_eval:
+            c.eval()
+        criterion = torch.nn.CrossEntropyLoss()
+        top1_meters = [AverageMeter() for _ in classifiers_eval]
+        val_loader_tqdm = tqdm(val_loader, desc=f"Val   [Epoch {epoch+1}]")
+        for itr, data in enumerate(val_loader_tqdm):
+            with torch.cuda.amp.autocast(dtype=torch.float16, enabled=use_bfloat16):
+                clips = [
+                    [dij.to(device, non_blocking=True) for dij in di]
+                    for di in data[0]
+                ]
+                clip_indices = [d.to(device, non_blocking=True) for d in data[2]]
+                labels = data[1].to(device)
+                batch_size = len(labels)
+                with torch.no_grad():
+                    outputs = encoder(clips, clip_indices)
+                    outputs = [[c(o) for o in outputs] for c in classifiers_eval]
+                outputs = [sum([F.softmax(o, dim=1) for o in coutputs]) / len(coutputs) for coutputs in outputs]
+                top1_accs = [100.0 * coutputs.max(dim=1).indices.eq(labels).sum() / batch_size for coutputs in outputs]
+                top1_accs = [float(AllReduce.apply(t1a)) for t1a in top1_accs]
+                for t1m, t1a in zip(top1_meters, top1_accs):
+                    t1m.update(t1a)
+            # Real-time summary every 10 iterations
+            if itr % 10 == 0:
+                _agg_top1_val = np.array([t1m.avg for t1m in top1_meters])
+                mem_usage_val = torch.cuda.max_memory_allocated() / 1024.0**2
+                summary_val = f"max: {_agg_top1_val.max():.3f}% mean: {_agg_top1_val.mean():.3f}% min: {_agg_top1_val.min():.3f}% [mem: {mem_usage_val:.2e}]"
+                val_loader_tqdm.set_description(f"Val   [Epoch {epoch+1}] | {summary_val}")
+        val_accs = [t1m.avg for t1m in top1_meters]
+        val_acc = max(val_accs)
+        best_val_idx = int(np.argmax(val_accs))
+        # Print summary at end of validation
+        _agg_top1_val = np.array([t1m.avg for t1m in top1_meters])
+        mem_usage_val = torch.cuda.max_memory_allocated() / 1024.0**2
+        tqdm.write(
+            "[Val Epoch %d] max: %.3f%% mean: %.3f%% min: %.3f%% [mem: %.2e]"
+            % (epoch + 1, _agg_top1_val.max(), _agg_top1_val.mean(), _agg_top1_val.min(), mem_usage_val)
         )
 
-        logger.info("[%5d] train: %.3f%% test: %.3f%%" % (epoch + 1, train_acc, val_acc))
+        logger.info("[%5d] train: %.3f%% val: %.3f%%" % (epoch + 1, train_acc, val_acc))
         if rank == 0:
             csv_logger.log(epoch + 1, train_acc, val_acc)
+
+        # Save best validation checkpoint if improved
+        if val_acc > best_val_acc and not val_only:
+            best_val_acc = val_acc
+            best_val_head_idx = best_val_idx
+            best_ckpt = {
+                "classifier": classifiers[best_val_head_idx].state_dict(),
+                "optimizer": optimizer[best_val_head_idx].state_dict(),
+                "scaler": None if scaler is None else scaler[best_val_head_idx].state_dict(),
+                "epoch": epoch + 1,
+                "batch_size": batch_size,
+                "world_size": world_size,
+                "head_idx": best_val_head_idx,
+                "val_acc": best_val_acc,
+            }
+            best_path = os.path.join(folder, "best_val.pt")
+            torch.save(best_ckpt, best_path)
+            logger.info(f"Saved new best validation checkpoint for head {best_val_head_idx} with val_acc {best_val_acc:.3f}% at {best_path}")
 
         if val_only:
             return
