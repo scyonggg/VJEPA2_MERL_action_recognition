@@ -1,0 +1,135 @@
+cpus_per_task: 16
+eval_name: video_classification_frozen
+experiment:
+    classifier:
+        num_heads: 16
+        num_probe_blocks: 4
+    data:
+        dataset_train: /home/chanyong/workspace/vjepa2-cursor/MERL/csv_format/train_paths.csv
+        dataset_type: TemporalVideoDataset
+        dataset_val: /home/chanyong/workspace/vjepa2-cursor/MERL/csv_format/val_paths.csv
+        frame_step: 4
+        frames_per_clip: 16
+        num_classes: 5
+        num_segments: 2
+        num_views_per_segment: 3
+        resolution: 256
+    optimization:
+        batch_size: 1
+        multihead_kwargs:
+        - final_lr: 0.0
+          final_weight_decay: 0.01
+          lr: 0.005
+          start_lr: 0.005
+          warmup: 0.0
+          weight_decay: 0.01
+        - final_lr: 0.0
+          final_weight_decay: 0.01
+          lr: 0.003
+          start_lr: 0.003
+          warmup: 0.0
+          weight_decay: 0.01
+        - final_lr: 0.0
+          final_weight_decay: 0.01
+          lr: 0.001
+          start_lr: 0.001
+          warmup: 0.0
+          weight_decay: 0.01
+        - final_lr: 0.0
+          final_weight_decay: 0.01
+          lr: 0.0003
+          start_lr: 0.0003
+          warmup: 0.0
+          weight_decay: 0.01
+        - final_lr: 0.0
+          final_weight_decay: 0.01
+          lr: 0.0001
+          start_lr: 0.0001
+          warmup: 0.0
+          weight_decay: 0.01
+        - final_lr: 0.0
+          final_weight_decay: 0.1
+          lr: 0.005
+          start_lr: 0.005
+          warmup: 0.0
+          weight_decay: 0.1
+        - final_lr: 0.0
+          final_weight_decay: 0.1
+          lr: 0.003
+          start_lr: 0.003
+          warmup: 0.0
+          weight_decay: 0.1
+        - final_lr: 0.0
+          final_weight_decay: 0.1
+          lr: 0.001
+          start_lr: 0.001
+          warmup: 0.0
+          weight_decay: 0.1
+        - final_lr: 0.0
+          final_weight_decay: 0.1
+          lr: 0.0003
+          start_lr: 0.0003
+          warmup: 0.0
+          weight_decay: 0.1
+        - final_lr: 0.0
+          final_weight_decay: 0.1
+          lr: 0.0001
+          start_lr: 0.0001
+          warmup: 0.0
+          weight_decay: 0.1
+        - final_lr: 0.0
+          final_weight_decay: 0.4
+          lr: 0.005
+          start_lr: 0.005
+          warmup: 0.0
+          weight_decay: 0.4
+        - final_lr: 0.0
+          final_weight_decay: 0.4
+          lr: 0.003
+          start_lr: 0.003
+          warmup: 0.0
+          weight_decay: 0.4
+        - final_lr: 0.0
+          final_weight_decay: 0.4
+          lr: 0.001
+          start_lr: 0.001
+          warmup: 0.0
+          weight_decay: 0.4
+        - final_lr: 0.0
+          final_weight_decay: 0.4
+          lr: 0.0003
+          start_lr: 0.0003
+          warmup: 0.0
+          weight_decay: 0.4
+        - final_lr: 0.0
+          final_weight_decay: 0.4
+          lr: 0.0001
+          start_lr: 0.0001
+          warmup: 0.0
+          weight_decay: 0.4
+        num_epochs: 30
+        use_bfloat16: True
+        use_pos_embed: False
+folder: /home/chanyong/workspace/ckpts
+max_workers: 8
+mem_per_gpu: 220G
+model_kwargs:
+    checkpoint: /home/chanyong/workspace/ckpts/vjepa2_vitl.pt
+    module_name: evals.video_classification_frozen.modelcustom.vit_encoder_multiclip
+    pretrain_kwargs:
+        encoder:
+            checkpoint_key: target_encoder
+            img_temporal_dim_size: null
+            model_name: vit_large
+            patch_size: 16
+            tubelet_size: 2
+            uniform_power: true
+            use_rope: true
+    wrapper_kwargs:
+        max_frames: 128
+        use_pos_embed: false
+nodes: 1
+resume_checkpoint: true
+tag: merl-vitl16-256-16f-5classes-temporal
+tasks_per_node: 1
+use_fsdp: false 

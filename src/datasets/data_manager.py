@@ -87,4 +87,33 @@ def init_data(
             log_dir=log_dir,
         )
 
+    elif data.lower() == "temporalvideodataset":
+        from src.datasets.temporal_video_dataset import make_temporal_videodataset
+
+        dataset, data_loader, dist_sampler = make_temporal_videodataset(
+            data_paths=root_path,
+            batch_size=batch_size,
+            frames_per_clip=clip_len,
+            dataset_fpcs=dataset_fpcs,
+            frame_step=frame_sample_rate,
+            duration=duration,
+            fps=fps,
+            num_clips=num_clips,
+            random_clip_sampling=random_clip_sampling,
+            allow_clip_overlap=allow_clip_overlap,
+            filter_short_videos=filter_short_videos,
+            filter_long_videos=filter_long_videos,
+            shared_transform=shared_transform,
+            transform=transform,
+            datasets_weights=datasets_weights,
+            collator=collator,
+            num_workers=num_workers,
+            pin_mem=pin_mem,
+            persistent_workers=persistent_workers,
+            world_size=world_size,
+            rank=rank,
+            deterministic=deterministic,
+            log_dir=log_dir,
+        )
+
     return (data_loader, dist_sampler)

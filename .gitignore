@@ -1,4 +1,56 @@
+# Ignore Python cache and environment files
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+*.egg-info/
+.env
+.venv
+
+# Ignore Jupyter and notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore datasets and large data
+MERL/
+datasets/
+*.csv
+*.json
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.tar
+*.zip
+*.gz
+*.pkl
+*.pickle
+
+# Ignore model checkpoints and weights
+ckpts/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pb
+
+# Ignore logs and outputs
+*.log
+logs/
+output/
+outputs/
+training_results/
+evaluation_results/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore other user-specified large files
+store_collector/
+
 .vscode/
 .*.swp
 
@@ -15,9 +67,6 @@ evals/ava/alphaction/data
 run_evals.py
 run_evals_v2.py
 run_pretrain.py
-
-*.egg-info/
-*.ipynb_checkpoints/
 
 traces/
 third_party/*

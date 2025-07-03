@@ -321,6 +321,9 @@ def run_one_epoch(
             if training:
                 outputs = [[c(o) for o in outputs] for c in classifiers]
 
+        print("Classifier output shape:", outputs[0][0].shape)
+        print("Labels min/max:", labels.min().item(), labels.max().item())
+
         # Compute loss
         losses = [[criterion(o, labels) for o in coutputs] for coutputs in outputs]
         with torch.no_grad():
